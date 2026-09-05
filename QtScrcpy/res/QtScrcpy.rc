@@ -4,8 +4,8 @@ IDI_ICON1       ICON      "QtScrcpy.ico"
 // GB2312编码的话，在中文系统上打包FileDescription可以显示中文
 // 在github action（英文系统）打包后FileDescription是乱码，utf8编码也不行。。
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION VERSION_MAJOR,VERSION_MINOR,VERSION_PATCH
- PRODUCTVERSION VERSION_MAJOR,VERSION_MINOR,VERSION_PATCH
+ FILEVERSION 2,1,2,0
+ PRODUCTVERSION 2,1,2,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -22,10 +22,10 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "RanKun"
             VALUE "FileDescription", "Android real-time display control software"
-            VALUE "FileVersion", VERSION_RC_STR
+            VALUE "FileVersion", "2.1.2"
             VALUE "LegalCopyright", "Copyright (C) RanKun 2018-2038. All rights reserved."
             VALUE "ProductName", "QtScrcpy"
-            VALUE "ProductVersion", VERSION_RC_STR
+            VALUE "ProductVersion", "2.1.2"
         END
     END
     BLOCK "VarFileInfo"
