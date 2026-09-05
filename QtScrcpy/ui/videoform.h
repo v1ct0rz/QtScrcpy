@@ -6,7 +6,7 @@
 #include <QWidget>
 
 #include "../QtScrcpyCore/include/QtScrcpyCore.h"
-
+class QPropertyAnimation;
 namespace Ui
 {
     class videoForm;
@@ -109,6 +109,18 @@ private:
 
     //Whether to display the toolbar when connecting a device.
     bool show_toolbar = true;
+// ========== 桌面顶部吸附与自动隐藏 ==========
+private:
+    void checkDockTop();
+    void hideDockWindow();
+    void showDockWindow();
+    void handleAutoHide();
+
+    bool m_isDockedTop = false;           // 是否已停靠在屏幕顶部
+    bool m_isHiding = false;              // 当前是否处于收缩隐藏状态
+    int m_leaveCount = 0;                 // 鼠标移出计数器（防止抖动）
+    QTimer m_dockTimer;                   // 轮询鼠标位置的定时器
+    QPropertyAnimation *m_anim = nullptr; // 滑动展开/收起动画
 };
 
 #endif // VIDEOFORM_H
