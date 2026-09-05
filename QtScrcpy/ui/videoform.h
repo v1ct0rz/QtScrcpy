@@ -85,6 +85,19 @@ private:
     QPointer<QWidget> m_loadingWidget;
     QPointer<QYUVOpenGLWidget> m_videoWidget;
 
+// === 贴边自动隐藏 ===
+QTimer* m_edgeHideTimer = nullptr;      // 轮询鼠标位置
+QPropertyAnimation* m_slideAnimation = nullptr; // 滑入滑出动画
+bool m_isEdgeHidden = false;            // 当前是否处于隐藏状态
+bool m_isEdgeDocked = false;            // 当前是否吸附在顶部
+int m_edgeHideDelay = 400;              // 鼠标离开后延迟(ms)
+int m_edgeShowHotZone = 5;             // 屏幕顶部唤出热区高度(px)
+int m_visibleHeight = 3;               // 隐藏时露出的像素条高度
+
+void initEdgeAutoHide();
+void checkEdgeHide();
+void slideWindow(bool show);
+
     // Metal 渲染路径（仅 macOS arm64）
     QPointer<MetalVideoWidget> m_metalWidget;
 
