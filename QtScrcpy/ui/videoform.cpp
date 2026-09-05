@@ -1,5 +1,7 @@
 // #include <QDesktopWidget>
 #include <QCoreApplication>
+#include <QCursor>
+#include <QGuiApplication>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMessageBox>
@@ -13,8 +15,6 @@
 #include <QTimer>
 #include <QPropertyAnimation>
 #include <QWindow>
-#include <QCursor>
-#include <QAbstractAnimation>
 #include <QtWidgets/QHBoxLayout>
 
 #if defined(Q_OS_WIN32)
@@ -45,7 +45,12 @@ VideoForm::VideoForm(bool framelessWindow, bool skin, bool showToolbar, int deco
         }
     });
     initUI();
+    // 顶部吸附/自动隐藏独立于鼠标事件运行。
+    // 视频区域属于子控件，不能依赖 VideoForm::mouseMoveEvent() 持续收到事件。
+    m_dockTimer.setInterval(50);
     connect(&m_dockTimer, &QTimer::timeout, this, &VideoForm::handleAutoHide);
+    m_dockTimer.start();
+
     installShortcut();
     updateShowSize(size());
     bool vertical = size().height() > size().width();
@@ -1004,26 +1009,34 @@ void VideoForm::checkDockTop()
 {
     if (isFullScreen() || isMaximized()) {
         m_isDockedTop = false;
-        m_dockTimer.stop();
+        m_isHiding = false;
         return;
     }
 
-    QRect screenRect = getScreenRect();
-    // 判定：窗口顶部距离当前屏幕顶部小于等于 15px 时，触发磁吸
-    if (y() <= screenRect.top() + 15 && y() >= screenRect.top() - 30) {
-        move(x(), screenRect.top()); // 吸附紧贴顶部
+    const QRect screenRect = getScreenRect();
+    if (screenRect.isEmpty()) {
+        return;
+    }
+
+    const bool leftButtonDown =
+        (QGuiApplication::mouseButtons() & Qt::LeftButton) != 0;
+
+    // 仅在用户松开左键后吸附，避免拖动经过顶部时突然“粘住”。
+    if (!leftButtonDown && m_dragPosition.isNull() &&
+        frameGeometry().top() <= screenRect.top() + 15) {
+        move(x(), screenRect.top());
         m_isDockedTop = true;
         m_isHiding = false;
         m_leaveCount = 0;
-        staysOnTop(true);            // 吸附时强制置顶，防止隐藏后失去响应
-        if (!m_dockTimer.isActive()) {
-            m_dockTimer.start(150);  // 启动 150ms 轮询检测
-        }
-    } else {
-        // 如果被拖离了顶部，解除吸附状态并停止检测
+        staysOnTop(true);
+        return;
+    }
+
+    // 明显离开顶部时解除吸附。
+    if (frameGeometry().top() > screenRect.top() + 30) {
         m_isDockedTop = false;
         m_isHiding = false;
-        m_dockTimer.stop();
+        m_leaveCount = 0;
     }
 }
 
@@ -1032,17 +1045,23 @@ void VideoForm::hideDockWindow()
     if (!m_isDockedTop || m_isHiding || isFullScreen() || isMaximized()) {
         return;
     }
+
     m_isHiding = true;
-    QRect screenRect = getScreenRect();
+    const QRect screenRect = getScreenRect();
 
     if (!m_anim) {
         m_anim = new QPropertyAnimation(this, "pos", this);
     }
+
     m_anim->stop();
     m_anim->setDuration(200);
     m_anim->setStartValue(pos());
-    // 向上滑动隐藏，屏幕最顶端保留 3px 露头
     m_anim->setEndValue(QPoint(x(), screenRect.top() - height() + 3));
+
+    if (m_toolForm) {
+        m_toolForm->hide();
+    }
+
     m_anim->start();
 }
 
@@ -1051,55 +1070,83 @@ void VideoForm::showDockWindow()
     if (!m_isDockedTop || !m_isHiding || isFullScreen() || isMaximized()) {
         return;
     }
+
     m_isHiding = false;
     m_leaveCount = 0;
-    QRect screenRect = getScreenRect();
+    const QRect screenRect = getScreenRect();
 
     if (!m_anim) {
         m_anim = new QPropertyAnimation(this, "pos", this);
+        connect(m_anim, &QPropertyAnimation::finished, this, [this]() {
+            if (m_isDockedTop && !m_isHiding && !isFullScreen() && !isMaximized()) {
+                showToolForm(this->show_toolbar);
+            }
+        });
     }
+
     m_anim->stop();
     m_anim->setDuration(200);
     m_anim->setStartValue(pos());
-    // 向下滑出展开
     m_anim->setEndValue(QPoint(x(), screenRect.top()));
+
     m_anim->start();
 }
 
 void VideoForm::handleAutoHide()
 {
-    if (!m_isDockedTop || isFullScreen() || isMaximized()) {
+    if (isFullScreen() || isMaximized()) {
         return;
     }
 
-    // 动画正在播放时不打断
+    const QRect screenRect = getScreenRect();
+    if (screenRect.isEmpty()) {
+        return;
+    }
+
+    // Timer 持续运行，不再依赖 mouseReleaseEvent() 才开始检测。
+    checkDockTop();
+
+    if (!m_isDockedTop) {
+        return;
+    }
+
+    // 用户正在拖动窗口时，不触发自动隐藏。
+    if ((QGuiApplication::mouseButtons() & Qt::LeftButton) != 0 ||
+        !m_dragPosition.isNull()) {
+        m_leaveCount = 0;
+        return;
+    }
+
     if (m_anim && m_anim->state() == QAbstractAnimation::Running) {
         return;
     }
 
-    QPoint cursorPos = QCursor::pos();
-    QRect winRect = frameGeometry();
-    QRect screenRect = getScreenRect();
+    const QPoint cursorPos = QCursor::pos();
+    const QRect winRect = frameGeometry();
 
     if (m_isHiding) {
-        // 收缩隐藏时：鼠标移到屏幕最顶端 3px 区域，且在窗口横向宽度范围内，滑出窗口
-        if (cursorPos.y() <= screenRect.top() + 3 &&
-            cursorPos.x() >= winRect.left() && cursorPos.x() <= winRect.right()) {
+        // 隐藏后，鼠标进入屏幕顶部 5px 热区且位于窗口横向范围内，重新显示。
+        if (cursorPos.y() <= screenRect.top() + 5 &&
+            cursorPos.x() >= winRect.left() &&
+            cursorPos.x() <= winRect.right()) {
             showDockWindow();
         }
-    } else {
-        // 展开状态时：判定鼠标是否同时离开了主窗口和右侧工具栏
-        bool inVideo = winRect.contains(cursorPos);
-        bool inTool = (m_toolForm && m_toolForm->isVisible() && m_toolForm->frameGeometry().contains(cursorPos));
+        return;
+    }
 
-        if (!inVideo && !inTool) {
-            m_leaveCount++;
-            // 连续检测到两次鼠标离开（约 300ms），触发向上隐藏
-            if (m_leaveCount >= 2) {
-                hideDockWindow();
-            }
-        } else {
-            m_leaveCount = 0;
+    const bool inVideo = winRect.contains(cursorPos);
+    const bool inTool =
+        (m_toolForm && m_toolForm->isVisible() &&
+         m_toolForm->frameGeometry().contains(cursorPos));
+
+    if (!inVideo && !inTool) {
+        ++m_leaveCount;
+        // 50ms * 4 = 约 200ms，避免边缘抖动导致闪烁。
+        if (m_leaveCount >= 4) {
+            hideDockWindow();
         }
+    } else {
+        m_leaveCount = 0;
     }
 }
+
