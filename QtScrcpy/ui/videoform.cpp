@@ -13,6 +13,8 @@
 #include <QTimer>
 #include <QPropertyAnimation>
 #include <QWindow>
+#include <QCursor>
+#include <QAbstractAnimation>
 #include <QtWidgets/QHBoxLayout>
 
 #if defined(Q_OS_WIN32)
