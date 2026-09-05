@@ -4,15 +4,15 @@ on:
   push:
     paths:
       - 'QtScrcpy/**'
-      - '!QtScrcpy/res/**'
       - '.github/workflows/windows.yml'
       - 'ci/win**'
   pull_request:
     paths:
       - 'QtScrcpy/**'
-      - '!QtScrcpy/res/**'
       - '.github/workflows/windows.yml'
       - 'ci/win**'
+      
+workflow_dispatch:
 jobs:
   build:
     name: Build
